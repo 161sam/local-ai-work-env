@@ -24,7 +24,7 @@
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/workspace-in-a-box.git
+git clone https://github.com/161sam/local-ai-work-env.git
 cd workspace-in-a-box
 
 # 2. Configure environment
