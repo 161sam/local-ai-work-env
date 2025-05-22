@@ -3,24 +3,22 @@
     email {$LETSENCRYPT_EMAIL}
 }
 
-# N8N
+# N8N Workflows
 {$N8N_HOSTNAME} {
-    # For domains, Caddy will automatically use Let's Encrypt
-    # For localhost/port addresses, HTTPS won't be enabled
     reverse_proxy localhost:5678
 }
 
-# Open WebUI
+# Open WebUI Chat Interface
 {$WEBUI_HOSTNAME} {
     reverse_proxy localhost:3000
 }
 
-# Flowise
+# Flowise AI Builder
 {$FLOWISE_HOSTNAME} {
     reverse_proxy localhost:3001
 }
 
-# Langfuse
+# Langfuse Observability
 {$LANGFUSE_HOSTNAME} {
     reverse_proxy localhost:3002
 }
@@ -30,12 +28,17 @@
     reverse_proxy localhost:11434
 }
 
-# Supabase
+# Supabase Backend
 {$SUPABASE_HOSTNAME} {
     reverse_proxy localhost:8000
 }
 
-# SearXNG
+# Guacamole Desktop Gateway
+{$GUACAMOLE_HOSTNAME} {
+    reverse_proxy localhost:8080
+}
+
+# SearXNG Meta Search Engine
 {$SEARXNG_HOSTNAME} {
     encode zstd gzip
     
@@ -86,7 +89,7 @@
     }
     
     # SearXNG (uWSGI)
-    reverse_proxy localhost:8080 {
+    reverse_proxy localhost:8081 {
         header_up X-Forwarded-Port {http.request.port}
         header_up X-Real-IP {http.request.remote.host}
         # https://github.com/searx/searx-docker/issues/24
