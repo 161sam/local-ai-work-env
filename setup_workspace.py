@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Workspace-in-a-Box Startup Script mit Editor-Auswahl
-Vollständige Integration von Zed-Editor und VS Code
+Workspace-in-a-Box Startup Script - Vollständige Version
+Integriert alle Services: Flowise, Caddy, SearXNG + Desktop + Editor-Auswahl
 """
 
 import subprocess
@@ -10,6 +10,8 @@ import os
 import json
 import sys
 import argparse
+import shutil
+import platform
 from pathlib import Path
 
 def show_banner():
@@ -17,15 +19,15 @@ def show_banner():
     print("\n" + "="*80)
     print("🚀 WORKSPACE-IN-A-BOX - AI DEVELOPMENT ENVIRONMENT")
     print("="*80)
-    print("🎨 Modern AI development workspace with browser-based desktop access")
-    print("⚡ Featuring Zed Editor, VS Code, N8N, Open WebUI, and more!")
+    print("🎨 Complete AI development workspace with browser-based desktop access")
+    print("⚡ Features: Zed/VS Code, N8N, Open WebUI, Flowise, SearXNG, and more!")
     print("="*80)
 
 def check_prerequisites():
     """Überprüft Systemvoraussetzungen"""
     print("🔍 Checking prerequisites...")
 
-    required_commands = ['docker', 'docker-compose', 'curl']
+    required_commands = ['docker', 'docker-compose', 'curl', 'git']
     missing_commands = []
 
     for cmd in required_commands:
@@ -37,8 +39,17 @@ def check_prerequisites():
 
     if missing_commands:
         print(f"❌ Missing required commands: {', '.join(missing_commands)}")
-        print("Please install Docker and Docker Compose first.")
+        print("Please install Docker, Docker Compose, and Git first.")
         sys.exit(1)
+
+    # Docker-Compose Version prüfen
+    try:
+        result = subprocess.run(['docker-compose', '--version'], 
+                              capture_output=True, text=True)
+        if 'version 2.' not in result.stdout and 'version v2.' not in result.stdout:
+            print("⚠️  Warning: Docker Compose v2 recommended for best performance")
+    except:
+        pass
 
     print("✅ All prerequisites met!")
 
@@ -92,14 +103,13 @@ def select_editor():
         try:
             choice = input("👉 Select editor (1-2) [1 for Zed]: ").strip()
 
-            if not choice:  # Default zu Zed
+            if not choice:
                 choice = "1"
 
             if choice in editors:
                 selected = editors[choice]
                 print(f"\n✅ Selected: {selected['name']}")
 
-                # Bestätigung für VS Code (da Zed empfohlen wird)
                 if choice == "2":
                     confirm = input("ℹ️  Zed is recommended for the best experience. Continue with VS Code? (y/N): ").strip().lower()
                     if confirm not in ['y', 'yes']:
@@ -113,11 +123,89 @@ def select_editor():
             print("\n\n👋 Setup cancelled.")
             sys.exit(0)
 
+def clone_supabase_repo():
+    """Clone the Supabase repository using sparse checkout if not already present."""
+    if not os.path.exists("supabase"):
+        print("📦 Cloning the Supabase repository...")
+        subprocess.run([
+            "git", "clone", "--filter=blob:none", "--no-checkout",
+            "https://github.com/supabase/supabase.git"
+        ], check=True)
+        os.chdir("supabase")
+        subprocess.run(["git", "sparse-checkout", "init", "--cone"], check=True)
+        subprocess.run(["git", "sparse-checkout", "set", "docker"], check=True)
+        subprocess.run(["git", "checkout", "master"], check=True)
+        os.chdir("..")
+        print("✅ Supabase repository cloned")
+    else:
+        print("📦 Supabase repository exists, updating...")
+        os.chdir("supabase")
+        subprocess.run(["git", "pull"], check=True)
+        os.chdir("..")
+
+def prepare_supabase_env():
+    """Copy .env to .env in supabase/docker."""
+    env_path = os.path.join("supabase", "docker", ".env")
+    env_example_path = os.path.join(".env")
+    
+    if os.path.exists(env_example_path):
+        print("🔧 Copying .env to supabase/docker...")
+        shutil.copyfile(env_example_path, env_path)
+    else:
+        print("⚠️  .env file not found. Please create one from .env.example")
+
+def generate_searxng_secret_key():
+    """Generate a secret key for SearXNG based on the current platform."""
+    print("🔐 Configuring SearXNG settings...")
+    
+    settings_path = os.path.join("searxng", "settings.yml")
+    settings_base_path = os.path.join("searxng", "settings-base.yml")
+    
+    if not os.path.exists(settings_base_path):
+        print(f"⚠️  SearXNG base settings file not found at {settings_base_path}")
+        return
+    
+    if not os.path.exists(settings_path):
+        print(f"📝 Creating SearXNG settings.yml from base...")
+        try:
+            shutil.copyfile(settings_base_path, settings_path)
+            print(f"✅ Created {settings_path}")
+        except Exception as e:
+            print(f"❌ Error creating settings.yml: {e}")
+            return
+
+    print("🔑 Generating SearXNG secret key...")
+    system = platform.system()
+    
+    try:
+        if system == "Windows":
+            ps_command = [
+                "powershell", "-Command",
+                "$randomBytes = New-Object byte[] 32; " +
+                "(New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes); " +
+                "$secretKey = -join ($randomBytes | ForEach-Object { \"{0:x2}\" -f $_ }); " +
+                "(Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml"
+            ]
+            subprocess.run(ps_command, check=True)
+        elif system == "Darwin":  # macOS
+            openssl_cmd = ["openssl", "rand", "-hex", "32"]
+            random_key = subprocess.check_output(openssl_cmd).decode('utf-8').strip()
+            sed_cmd = ["sed", "-i", "", f"s|ultrasecretkey|{random_key}|g", settings_path]
+            subprocess.run(sed_cmd, check=True)
+        else:  # Linux
+            openssl_cmd = ["openssl", "rand", "-hex", "32"]
+            random_key = subprocess.check_output(openssl_cmd).decode('utf-8').strip()
+            sed_cmd = ["sed", "-i", f"s|ultrasecretkey|{random_key}|g", settings_path]
+            subprocess.run(sed_cmd, check=True)
+        
+        print("✅ SearXNG secret key generated successfully.")
+    except Exception as e:
+        print(f"⚠️  Error generating SearXNG secret key: {e}")
+
 def setup_environment(editor_key):
     """Umgebung mit ausgewähltem Editor einrichten"""
     print(f"\n🔧 Setting up environment with {editor_key.upper()}...")
 
-    # Verzeichnisse erstellen
     directories = [
         "desktop",
         "desktop/editor-config",
@@ -130,22 +218,20 @@ def setup_environment(editor_key):
         "shared",
         "guacamole/init",
         "database/init",
-        "n8n/templates"
+        "n8n/templates",
+        "searxng"
     ]
 
     for directory in directories:
         Path(directory).mkdir(parents=True, exist_ok=True)
-        print(f"📁 Created: {directory}")
 
-    # Editor-Auswahl in Umgebungsvariable speichern
+    # Editor-Auswahl in .env speichern
     env_content = ""
     if os.path.exists('.env'):
         with open('.env', 'r') as f:
             env_content = f.read()
 
-    # SELECTED_EDITOR hinzufügen oder aktualisieren
     if 'SELECTED_EDITOR=' in env_content:
-        # Existierende Zeile ersetzen
         lines = env_content.split('\n')
         for i, line in enumerate(lines):
             if line.startswith('SELECTED_EDITOR='):
@@ -153,7 +239,6 @@ def setup_environment(editor_key):
                 break
         env_content = '\n'.join(lines)
     else:
-        # Neue Zeile hinzufügen
         env_content = f"{env_content}\nSELECTED_EDITOR={editor_key}\n"
 
     with open('.env', 'w') as f:
@@ -176,7 +261,6 @@ def create_zed_config():
     """Zed-Konfiguration für AI-Development"""
     config_dir = Path("desktop/editor-config/zed")
 
-    # Zed Settings
     settings = {
         "theme": "Ayu Dark",
         "buffer_font_family": "JetBrains Mono",
@@ -251,7 +335,6 @@ def create_zed_config():
     with open(config_dir / "settings.json", 'w') as f:
         json.dump(settings, f, indent=2)
 
-    # Keymap
     keymap = [
         {
             "context": "Editor",
@@ -267,6 +350,13 @@ def create_zed_config():
                 "ctrl-shift-l": "editor::SelectAll",
                 "alt-up": "editor::MoveLineUp",
                 "alt-down": "editor::MoveLineDown"
+            }
+        },
+        {
+            "context": "Terminal",
+            "bindings": {
+                "ctrl-shift-c": "terminal::Copy",
+                "ctrl-shift-v": "terminal::Paste"
             }
         }
     ]
@@ -333,7 +423,6 @@ def create_dev_tools():
 
     scripts_dir = Path("desktop/dev-tools")
 
-    # Service-Status-Checker
     check_services_script = """#!/bin/bash
 echo "🔍 Checking AI Services Status..."
 
@@ -343,9 +432,12 @@ services=(
     "ollama:11434"
     "qdrant:6333"
     "kong:8000"
-    "appflowy:8080"
+    "flowise:3001"
+    "searxng:8081"
+    "appflowy:8082"
     "affine:3010"
-    "gitlab:8082"
+    "gitlab:8083"
+    "langfuse:3002"
 )
 
 for service in "${services[@]}"; do
@@ -363,7 +455,6 @@ done
     with open(scripts_dir / "check-services.sh", 'w') as f:
         f.write(check_services_script)
 
-    # Docker-Helper
     docker_helper_script = """#!/bin/bash
 echo "🐳 Docker Container Status"
 echo "=========================="
@@ -372,12 +463,19 @@ echo ""
 echo "💾 Docker Volume Usage"
 echo "====================="
 docker system df
+echo ""
+echo "🔗 Service URLs"
+echo "==============="
+echo "Desktop:    http://localhost:8080"
+echo "N8N:        http://n8n:5678"
+echo "Open WebUI: http://open-webui:8080"
+echo "Flowise:    http://flowise:3001"
+echo "SearXNG:    http://searxng:8081"
 """
 
     with open(scripts_dir / "docker-status.sh", 'w') as f:
         f.write(docker_helper_script)
 
-    # Alle Scripts ausführbar machen
     for script in scripts_dir.glob("*.sh"):
         script.chmod(0o755)
 
@@ -387,7 +485,9 @@ def setup_guacamole():
     """Guacamole-Datenbank einrichten"""
     print("🖥️ Setting up Guacamole database...")
 
-    init_file = Path("guacamole/init/initdb.sql")
+    init_dir = Path("guacamole/init")
+    init_file = init_dir / "initdb.sql"
+    
     if init_file.exists():
         print("✅ Guacamole already configured")
         return
@@ -405,17 +505,42 @@ def setup_guacamole():
     except subprocess.CalledProcessError as e:
         print(f"⚠️ Could not configure Guacamole automatically: {e}")
 
+def stop_existing_containers(profile, features):
+    """Stop existing containers"""
+    print("🛑 Stopping existing containers...")
+    
+    cmd = ["docker-compose", "-p", "localai", "down"]
+    
+    try:
+        subprocess.run(cmd, check=False)  # Don't fail if nothing to stop
+        print("✅ Containers stopped")
+    except:
+        pass
+
 def start_services(profile, features):
     """Services mit Docker Compose starten"""
     print(f"🚀 Starting services with profile '{profile}' and features: {features}")
 
-    cmd = ["docker-compose", "up", "-d", "--build"]
+    # Supabase zuerst starten
+    print("📦 Starting Supabase services...")
+    subprocess.run([
+        "docker-compose", "-p", "localai", 
+        "-f", "supabase/docker/docker-compose.yml", 
+        "up", "-d"
+    ], check=True)
+    
+    print("⏳ Waiting for Supabase to initialize...")
+    time.sleep(15)
+
+    # Hauptservices starten
+    cmd = ["docker-compose", "-p", "localai", "up", "-d", "--build"]
 
     if profile != "none":
         cmd.extend(["--profile", profile])
 
     for feature in features:
-        cmd.extend(["--profile", feature])
+        if feature != "none":
+            cmd.extend(["--profile", feature])
 
     try:
         subprocess.run(cmd, check=True)
@@ -426,30 +551,27 @@ def start_services(profile, features):
 
 def wait_for_services():
     """Auf kritische Services warten"""
-    services = [
-        ("Guacamole", "localhost:8080", 180),
-        ("N8N", "n8n", "5678", 120),
-        ("Open WebUI", "open-webui", "8080", 120),
+    services_to_check = [
+        ("Guacamole", "localhost", "8080", 180),
+        ("N8N", "localhost", "5678", 120),
+        ("Open WebUI", "localhost", "3000", 120),
+        ("Flowise", "localhost", "3001", 120),
     ]
 
-    for service_name, host, port, timeout in services:
-        print(f"⏳ Waiting for {service_name}...")
+    for service_name, host, port, timeout in services_to_check:
+        print(f"⏳ Waiting for {service_name} on {host}:{port}...")
 
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                if host == "localhost":
-                    url = f"http://{host}:{port}"
-                else:
-                    # Internal service check via docker exec
-                    result = subprocess.run([
-                        "docker", "exec", host, "curl", "-s", "-o", "/dev/null",
-                        "-w", "%{http_code}", f"http://localhost:{port}"
-                    ], capture_output=True, text=True, timeout=5)
+                result = subprocess.run([
+                    "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                    f"http://{host}:{port}"
+                ], capture_output=True, text=True, timeout=5)
 
-                    if result.returncode == 0 and result.stdout.startswith(('200', '302', '401')):
-                        print(f"✅ {service_name} is ready!")
-                        break
+                if result.returncode == 0 and result.stdout.startswith(('200', '302', '401')):
+                    print(f"✅ {service_name} is ready!")
+                    break
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
 
@@ -457,7 +579,7 @@ def wait_for_services():
         else:
             print(f"⚠️ {service_name} may not be ready yet")
 
-def show_success_message(editor_name):
+def show_success_message(editor_name, features):
     """Erfolgs-Nachricht anzeigen"""
     print("\n" + "="*80)
     print("🎉 WORKSPACE-IN-A-BOX IS READY!")
@@ -481,39 +603,72 @@ def show_success_message(editor_name):
     print("   - Language servers installed and ready")
     print("   - Available on desktop or via 'edit' command")
     print()
-    print("🧠 AI SERVICES (accessible from desktop):")
+    print("🧠 CORE AI SERVICES (accessible from desktop):")
     print("   🧠 N8N Workflows:     http://n8n:5678")
     print("   💬 Open WebUI Chat:   http://open-webui:8080")
-    print("   📝 AppFlowy Notes:    http://appflowy:8080")
-    print("   ✨ AFFINE Workspace:  http://affine:3010")
-    print("   🦊 GitLab Repository: http://gitlab:8082")
-    print("   🗄️ Supabase Database: http://kong:8000")
-    print("   📊 Qdrant Vector DB:  http://qdrant:6333/dashboard")
     print("   🤖 Ollama API:        http://ollama:11434")
+    print("   📊 Qdrant Vector DB:  http://qdrant:6333/dashboard")
+    print("   🗄️ Supabase Database: http://kong:8000")
     print()
+    
+    if "productivity" in features:
+        print("📝 PRODUCTIVITY SERVICES:")
+        print("   🌊 Flowise AI Builder: http://flowise:3001")
+        print("   🔍 SearXNG Search:     http://searxng:8081")
+        print("   📝 AppFlowy Notes:     http://appflowy:8082")
+        print("   ✨ AFFINE Workspace:   http://affine:3010")
+        print()
+    
+    if "development" in features:
+        print("🛠️ DEVELOPMENT SERVICES:")
+        print("   🦊 GitLab Repository:  http://gitlab:8083")
+        print()
+    
+    if "observability" in features:
+        print("📈 OBSERVABILITY:")
+        print("   📈 Langfuse Analytics: http://langfuse:3002")
+        print()
+
     print("💡 QUICK TIPS:")
     print("   - Desktop has pre-configured bookmarks for all services")
     print("   - Use 'check-services.sh' to verify service status")
     print("   - Files in ./desktop-shared are accessible from desktop")
     print("   - All services communicate via internal Docker network")
     print()
-    print("🚀 Happy coding with your new AI development workspace!")
+    print("🚀 Happy coding with your complete AI development workspace!")
     print("="*80)
 
 def main():
-    parser = argparse.ArgumentParser(description='Workspace-in-a-Box Setup')
+    parser = argparse.ArgumentParser(description='Workspace-in-a-Box Complete Setup')
     parser.add_argument('--profile', choices=['cpu', 'gpu-nvidia', 'gpu-amd'],
-                       default='cpu', help='GPU profile')
+                       default='cpu', help='GPU profile (default: cpu)')
     parser.add_argument('--skip-editor-selection', action='store_true',
                        help='Skip editor selection (use Zed as default)')
     parser.add_argument('--features', nargs='*',
-                       choices=['productivity', 'development', 'observability'],
-                       default=['productivity'], help='Features to enable')
+                       choices=['desktop', 'productivity', 'development', 'observability'],
+                       default=['desktop', 'productivity'], 
+                       help='Features to enable (default: desktop + productivity)')
+    parser.add_argument('--full-stack', action='store_true',
+                       help='Enable all features')
 
     args = parser.parse_args()
 
+    if args.full_stack:
+        args.features = ['desktop', 'productivity', 'development', 'observability']
+
+    # Stelle sicher, dass desktop immer aktiviert ist
+    if 'desktop' not in args.features:
+        args.features.append('desktop')
+
     show_banner()
     check_prerequisites()
+
+    # Supabase Repository vorbereiten
+    clone_supabase_repo()
+    prepare_supabase_env()
+    
+    # SearXNG konfigurieren
+    generate_searxng_secret_key()
 
     # Editor-Auswahl
     if args.skip_editor_selection:
@@ -529,11 +684,12 @@ def main():
     setup_guacamole()
 
     # Services starten
+    stop_existing_containers(args.profile, args.features)
     start_services(args.profile, args.features)
     wait_for_services()
 
     # Erfolg!
-    show_success_message(editor_name)
+    show_success_message(editor_name, args.features)
 
 if __name__ == "__main__":
     main()
