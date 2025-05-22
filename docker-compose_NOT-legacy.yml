@@ -1,5 +1,5 @@
-# docker-compose.yml - Workspace-in-a-Box (Legacy Version ohne Profile)
-# Kompatibel mit Docker Compose < 1.28
+# docker-compose.yml - Workspace-in-a-Box - Vollständige Integration
+# Alle Original-Services + Desktop + Editor-Integration
 
 include:
   - ./supabase/docker/docker-compose.yml
@@ -31,7 +31,7 @@ volumes:
   # Productivity Stack
   appflowy_data:
   affine_data:
-
+  
   # Development Stack
   gitlab_config:
   gitlab_logs:
@@ -108,11 +108,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["desktop"]
 
   guacd:
     <<: *common-env
     image: guacamole/guacd:latest
     container_name: guacd
+    profiles: ["desktop"]
 
   guacamole:
     <<: *common-env
@@ -131,6 +133,7 @@ services:
       POSTGRES_PASSWORD: ${GUAC_POSTGRES_PASSWORD}
     ports:
       - "8080:8080"
+    profiles: ["desktop"]
 
   # ===== ENHANCED DESKTOP ENVIRONMENT =====
   desktop:
@@ -162,9 +165,11 @@ services:
       - SYS_ADMIN
     security_opt:
       - seccomp:unconfined
+    profiles: ["desktop"]
     depends_on:
       - n8n
       - open-webui
+      - ollama
 
   # ===== CORE AI SERVICES =====
   n8n-import:
@@ -176,6 +181,7 @@ services:
       - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
     volumes:
       - ./n8n/backup:/backup
+    profiles: ["cpu", "gpu-nvidia", "gpu-amd"]
 
   n8n:
     <<: *service-n8n
@@ -189,13 +195,14 @@ services:
     depends_on:
       n8n-import:
         condition: service_completed_successfully
+    profiles: ["cpu", "gpu-nvidia", "gpu-amd"]
 
-  # CPU-Version (Standard)
   ollama-cpu:
+    profiles: ["cpu"]
     <<: *service-ollama
 
-  # GPU-Version (NVIDIA)
   ollama-gpu:
+    profiles: ["gpu-nvidia"]
     <<: *service-ollama
     deploy:
       resources:
@@ -205,8 +212,8 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # GPU-Version (AMD)
   ollama-gpu-amd:
+    profiles: ["gpu-amd"]
     <<: *service-ollama
     image: ollama/ollama:rocm
     devices:
@@ -214,20 +221,23 @@ services:
       - "/dev/dri"
 
   ollama-pull-llama-cpu:
+    profiles: ["cpu"]
     <<: *init-ollama
     depends_on:
       - ollama-cpu
 
   ollama-pull-llama-gpu:
+    profiles: ["gpu-nvidia"]
     <<: *init-ollama
     depends_on:
       - ollama-gpu
 
   ollama-pull-llama-gpu-amd:
+    profiles: ["gpu-amd"]
     <<: *init-ollama
     image: ollama/ollama:rocm
     depends_on:
-      - ollama-gpu-amd
+     - ollama-gpu-amd
 
   open-webui:
     <<: *common-env
@@ -246,10 +256,13 @@ services:
       ENABLE_SIGNUP: "True"
       ENABLE_RAG_WEB_SEARCH: "True"
       ENABLE_RAG_WEB_LOADER: "True"
+    depends_on:
+      - ollama
+    profiles: ["cpu", "gpu-nvidia", "gpu-amd"]
 
   qdrant:
     <<: *common-env
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant
     container_name: qdrant
     ports:
       - 6333:6333
@@ -258,6 +271,7 @@ services:
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
+    profiles: ["cpu", "gpu-nvidia", "gpu-amd"]
 
   # ===== FLOWISE - NO-CODE AI WORKFLOWS =====
   flowise:
@@ -265,16 +279,17 @@ services:
     image: flowiseai/flowise
     container_name: flowise
     environment:
-      PORT: 3001
-      FLOWISE_USERNAME: ${FLOWISE_USERNAME}
-      FLOWISE_PASSWORD: ${FLOWISE_PASSWORD}
+        PORT: 3001
+        FLOWISE_USERNAME: ${FLOWISE_USERNAME}
+        FLOWISE_PASSWORD: ${FLOWISE_PASSWORD}  
     ports:
-      - 3001:3001
+        - 3001:3001
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway"        
     volumes:
-      - flowise_data:/root/.flowise
+        - flowise_data:/root/.flowise
     entrypoint: /bin/sh -c "sleep 3; flowise start"
+    profiles: ["productivity"]
 
   # ===== SEARXNG - META SEARCH ENGINE =====
   searxng:
@@ -301,6 +316,7 @@ services:
       options:
         max-size: "1m"
         max-file: "1"
+    profiles: ["productivity"]
 
   # ===== CADDY REVERSE PROXY =====
   caddy:
@@ -331,8 +347,155 @@ services:
       options:
         max-size: "1m"
         max-file: "1"
+    profiles: ["production"]
 
-  # ===== REDIS/VALKEY =====
+  # ===== LANGFUSE OBSERVABILITY =====
+  langfuse-worker:
+    <<: *common-env
+    image: langfuse/langfuse-worker:3
+    container_name: langfuse-worker
+    depends_on: &langfuse-depends-on
+      postgres:
+        condition: service_healthy    
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:3030:3030
+    environment: &langfuse-worker-env
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}
+      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET:-langfuse}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID:-minio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE:-true}
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX:-media/}
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET:-langfuse}
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}
+      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}
+      LANGFUSE_INGESTION_QUEUE_DELAY_MS: ${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}
+      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: ${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_AUTH: ${REDIS_AUTH:-LOCALONLYREDIS}
+      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
+      REDIS_TLS_CA: ${REDIS_TLS_CA:-/certs/ca.crt}
+      REDIS_TLS_CERT: ${REDIS_TLS_CERT:-/certs/redis.crt}
+      REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
+    profiles: ["observability"]
+
+  langfuse-web:
+    <<: *common-env
+    image: langfuse/langfuse:3
+    container_name: langfuse
+    depends_on: *langfuse-depends-on
+    ports:
+      - 3002:3000
+    environment:
+      <<: *langfuse-worker-env
+      NEXTAUTH_URL: http://localhost:3002
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
+    profiles: ["observability"]
+
+  clickhouse:
+    <<: *common-env
+    image: clickhouse/clickhouse-server
+    container_name: clickhouse
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - 127.0.0.1:8123:8123
+      - 127.0.0.1:9000:9000
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    profiles: ["observability"]
+
+  minio:
+    <<: *common-env
+    image: minio/minio
+    container_name: minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - 9090:9000
+      - 127.0.0.1:9091:9001
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+    profiles: ["observability"]
+
+  postgres:
+    <<: *common-env
+    image: postgres:${POSTGRES_VERSION:-latest}
+    container_name: langfuse-postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - 127.0.0.1:5433:5432
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    profiles: ["observability"]
+
   redis:
     <<: *common-env
     container_name: redis
@@ -356,6 +519,7 @@ services:
       interval: 3s
       timeout: 10s
       retries: 10
+    profiles: ["productivity", "development", "observability"]
 
   # ===== PRODUCTIVITY STACK =====
   appflowy:
@@ -370,6 +534,7 @@ services:
       - appflowy_data:/data
     depends_on:
       - db
+    profiles: ["productivity"]
 
   affine:
     <<: *common-env
@@ -389,6 +554,7 @@ services:
     depends_on:
       - db
       - redis
+    profiles: ["productivity"]
 
   # ===== DEVELOPMENT STACK =====
   gitlab-postgres:
@@ -402,14 +568,11 @@ services:
     volumes:
       - gitlab_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${GITLAB_POSTGRES_USER} -d ${GITLAB_POSTGRES_DB}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U ${GITLAB_POSTGRES_USER} -d ${GITLAB_POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["development"]
 
   gitlab:
     <<: *common-env
@@ -435,107 +598,4 @@ services:
     depends_on:
       gitlab-postgres:
         condition: service_healthy
-
-  # ===== LANGFUSE OBSERVABILITY =====
-  langfuse-worker:
-    <<: *common-env
-    image: langfuse/langfuse-worker:3
-    container_name: langfuse-worker
-    depends_on: &langfuse-depends-on
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    ports:
-      - 127.0.0.1:3030:3030
-    environment: &langfuse-worker-env
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
-      SALT: ${LANGFUSE_SALT}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
-      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}
-      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_AUTH: ${REDIS_AUTH:-LOCALONLYREDIS}
-
-  langfuse-web:
-    <<: *common-env
-    image: langfuse/langfuse:3
-    container_name: langfuse
-    depends_on: *langfuse-depends-on
-    ports:
-      - 3002:3000
-    environment:
-      <<: *langfuse-worker-env
-      NEXTAUTH_URL: http://localhost:3002
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-
-  clickhouse:
-    <<: *common-env
-    image: clickhouse/clickhouse-server
-    container_name: clickhouse
-    user: "101:101"
-    environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-    volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
-    ports:
-      - 127.0.0.1:8123:8123
-      - 127.0.0.1:9000:9000
-    healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 1s
-
-  minio:
-    <<: *common-env
-    image: minio/minio
-    container_name: minio
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - 9090:9000
-      - 127.0.0.1:9091:9001
-    volumes:
-      - langfuse_minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 1s
-      timeout: 5s
-      retries: 5
-      start_period: 1s
-
-  postgres:
-    <<: *common-env
-    image: postgres:${POSTGRES_VERSION:-latest}
-    container_name: langfuse-postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: postgres
-    ports:
-      - 127.0.0.1:5433:5432
-    volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data
+    profiles: ["development"]

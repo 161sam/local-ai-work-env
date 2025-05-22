@@ -1,0 +1,16 @@
+#!/bin/bash
+echo "🐳 Docker Container Status"
+echo "=========================="
+docker ps --format "table {{.Names}}	{{.Status}}	{{.Ports}}"
+echo ""
+echo "💾 Docker Volume Usage"
+echo "====================="
+docker system df
+echo ""
+echo "🔗 Service URLs"
+echo "==============="
+echo "Desktop:    http://localhost:8080"
+echo "N8N:        http://n8n:5678"
+echo "Open WebUI: http://open-webui:8080"
+echo "Flowise:    http://flowise:3001"
+echo "SearXNG:    http://searxng:8081"

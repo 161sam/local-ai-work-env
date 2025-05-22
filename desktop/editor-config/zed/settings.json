@@ -1,0 +1,100 @@
+{
+  "theme": "Ayu Dark",
+  "buffer_font_family": "JetBrains Mono",
+  "buffer_font_size": 14,
+  "ui_font_size": 16,
+  "preferred_line_length": 100,
+  "soft_wrap": "preferred_line_length",
+  "tab_size": 2,
+  "hard_tabs": false,
+  "show_whitespaces": "selection",
+  "relative_line_numbers": false,
+  "vim_mode": false,
+  "autosave": "on_focus_change",
+  "format_on_save": "on",
+  "terminal": {
+    "shell": {
+      "program": "/bin/zsh"
+    },
+    "working_directory": "current_project_directory",
+    "blinking": "terminal_controlled"
+  },
+  "project_panel": {
+    "dock": "left"
+  },
+  "outline_panel": {
+    "dock": "right"
+  },
+  "collaboration_panel": {
+    "dock": "left"
+  },
+  "git": {
+    "inline_blame": {
+      "enabled": true
+    },
+    "git_gutter": "tracked_files"
+  },
+  "lsp": {
+    "rust-analyzer": {
+      "binary": {
+        "path": "/home/kasm-user/.cargo/bin/rust-analyzer"
+      }
+    },
+    "typescript-language-server": {
+      "binary": {
+        "path": "/usr/local/bin/typescript-language-server"
+      }
+    },
+    "python-lsp-server": {
+      "binary": {
+        "path": "/usr/local/bin/pylsp"
+      }
+    }
+  },
+  "languages": {
+    "JavaScript": {
+      "language_servers": [
+        "typescript-language-server"
+      ],
+      "format_on_save": "on",
+      "formatter": "prettier"
+    },
+    "TypeScript": {
+      "language_servers": [
+        "typescript-language-server"
+      ],
+      "format_on_save": "on",
+      "formatter": "prettier"
+    },
+    "Python": {
+      "language_servers": [
+        "python-lsp-server"
+      ],
+      "format_on_save": "on",
+      "formatter": "black"
+    },
+    "Rust": {
+      "language_servers": [
+        "rust-analyzer"
+      ],
+      "format_on_save": "on"
+    },
+    "JSON": {
+      "language_servers": [
+        "vscode-json-languageserver"
+      ],
+      "format_on_save": "on"
+    },
+    "YAML": {
+      "language_servers": [
+        "yaml-language-server"
+      ],
+      "format_on_save": "on"
+    },
+    "Dockerfile": {
+      "language_servers": [
+        "docker-langserver"
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+[
+  {
+    "context": "Editor",
+    "bindings": {
+      "ctrl-shift-p": "command_palette::Toggle",
+      "ctrl-p": "file_finder::Toggle",
+      "ctrl-shift-f": "project_search::ToggleFocus",
+      "ctrl-`": "terminal_panel::ToggleFocus",
+      "ctrl-shift-e": "project_panel::ToggleFocus",
+      "ctrl-shift-o": "outline::Toggle",
+      "ctrl-j": "editor::JoinLines",
+      "ctrl-d": "editor::SelectNext",
+      "ctrl-shift-l": "editor::SelectAll",
+      "alt-up": "editor::MoveLineUp",
+      "alt-down": "editor::MoveLineDown"
+    }
+  },
+  {
+    "context": "Terminal",
+    "bindings": {
+      "ctrl-shift-c": "terminal::Copy",
+      "ctrl-shift-v": "terminal::Paste"
+    }
+  }
+]
