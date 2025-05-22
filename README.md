@@ -2,7 +2,7 @@
 
 ## 🎯 Überblick
 
-Dieses Setup erweitert das [local-ai-packaged](https://github.com/coleam00/local-ai-packaged) System um:
+Dieses Setup erweitert das [coleam00/local-ai-packaged](https://github.com/coleam00/local-ai-packaged) System um:
 
 - **🖥️ Guacamole Desktop**: Browser-Zugriff auf Linux Desktop
 - **📝 AppFlowy**: Notion-Alternative
