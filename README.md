@@ -45,12 +45,9 @@ Browser → Guacamole → Linux Desktop
 ### 1. Repository klonen
 
 ```bash
-# Original Repository klonen
-git clone https://github.com/coleam00/local-ai-packaged.git
+# Repository klonen
+git clone https://github.com/161sam/local-ai-work-env.git
 cd local-ai-packaged
-
-# Unsere erweiterten Dateien hinzufügen
-# (Die Dateien aus den Artifacts in das Verzeichnis kopieren)
 ```
 
 ### 2. Umgebungsvariablen konfigurieren
