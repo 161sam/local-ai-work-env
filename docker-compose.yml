@@ -1,340 +1,153 @@
-include:
-  - ./supabase/docker/docker-compose.yml
+# docker-compose.yml - Integriert mit Editor-Auswahl
+version: "3.8"
+
+networks:
+  localai:
+    driver: bridge
+    name: localai
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
+  # Core AI Stack
   n8n_storage:
   ollama_storage:
   qdrant_storage:
-  open-webui:
-  flowise:
-  caddy-data:
-  caddy-config:
-  valkey-data:
+  open_webui_data:
+
+  # Supabase Stack
+  supabase_db_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
   langfuse_minio_data:
+  valkey_data:
 
-x-n8n: &service-n8n
-  image: n8nio/n8n:latest
-  environment:
-    - DB_TYPE=postgresdb
-    - DB_POSTGRESDB_HOST=db
-    - DB_POSTGRESDB_USER=postgres
-    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-    - DB_POSTGRESDB_DATABASE=postgres
-    - N8N_DIAGNOSTICS_ENABLED=false
-    - N8N_PERSONALIZATION_ENABLED=false
-    - N8N_ENCRYPTION_KEY
-    - N8N_USER_MANAGEMENT_JWT_SECRET
-    - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
+  # Desktop Environment mit Editor-Support
+  desktop_home:
+  desktop_config:
+  guacamole_postgres_data:
 
-x-ollama: &service-ollama
-  image: ollama/ollama:latest
-  container_name: ollama
+  # Productivity Stack
+  appflowy_data:
+  affine_data:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+
+  # Shared Data
+  shared_data:
+
+x-common-env: &common-env
+  networks:
+    - localai
   restart: unless-stopped
-  ports:
-    - 11434:11434
-  environment:
-    - OLLAMA_CONTEXT_LENGTH=8192
-  volumes:
-    - ollama_storage:/root/.ollama
-
-x-init-ollama: &init-ollama
-  image: ollama/ollama:latest
-  container_name: ollama-pull-llama
-  volumes:
-    - ollama_storage:/root/.ollama
-  entrypoint: /bin/sh
-  command:
-    - "-c"
-    - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull qwen2.5:7b-instruct-q4_K_M; OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"
-    # For a larger context length verison of the model, run these commands:
-    # echo "FROM qwen2.5:7b-instruct-q4_K_M\n\nPARAMETER num_ctx 8096" > Modelfile
-    # ollama create qwen2.5:7b-8k -f ./Modelfile
-    # Change the name of the LLM and num_ctx as you see fit.
 
 services:
-  flowise:
-    image: flowiseai/flowise
-    restart: unless-stopped
-    container_name: flowise
+  # ===== BROWSER GATEWAY =====
+
+  guacamole-db:
+    <<: *common-env
+    image: postgres:15-alpine
+    container_name: guacamole-db
     environment:
-        - PORT=3001
-        - FLOWISE_USERNAME=${FLOWISE_USERNAME}
-        - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}  
-    ports:
-        - 3001:3001
-    extra_hosts:
-      - "host.docker.internal:host-gateway"        
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: ${GUAC_POSTGRES_PASSWORD}
     volumes:
-        - ~/.flowise:/root/.flowise
-    entrypoint: /bin/sh -c "sleep 3; flowise start"
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    restart: unless-stopped
-    container_name: open-webui
-    ports:
-      - "3000:8080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - open-webui:/app/backend/data
-
-  n8n-import:
-    <<: *service-n8n
-    container_name: n8n-import
-    entrypoint: /bin/sh
-    command:
-      - "-c"
-      - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
-    volumes:
-      - ./n8n/backup:/backup  
-
-  n8n:
-    <<: *service-n8n
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - 5678:5678
-    volumes:
-      - n8n_storage:/home/node/.n8n
-      - ./n8n/backup:/backup
-      - ./shared:/data/shared
-    depends_on:
-      n8n-import:
-        condition: service_completed_successfully
-
-  qdrant:
-    image: qdrant/qdrant
-    container_name: qdrant
-    restart: unless-stopped
-    ports:
-      - 6333:6333
-    volumes:
-      - qdrant_storage:/qdrant/storage
-
-  caddy:
-    container_name: caddy
-    image: docker.io/library/caddy:2-alpine
-    network_mode: host
-    restart: unless-stopped
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data:rw
-      - caddy-config:/config:rw
-    environment:
-      - N8N_HOSTNAME=${N8N_HOSTNAME:-":8001"}
-      - WEBUI_HOSTNAME=${WEBUI_HOSTNAME:-":8002"}
-      - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME:-":8003"}
-      - OLLAMA_HOSTNAME=${OLLAMA_HOSTNAME:-":8004"}
-      - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME:-":8005"}
-      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
-      - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
-      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
-
-  langfuse-worker:
-    image: langfuse/langfuse-worker:3
-    restart: always
-    depends_on: &langfuse-depends-on
-      postgres:
-        condition: service_healthy    
-      minio:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    ports:
-      - 127.0.0.1:3030:3030
-    environment: &langfuse-worker-env
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
-      SALT: ${LANGFUSE_SALT}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
-      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-true}
-      CLICKHOUSE_MIGRATION_URL: ${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse:8123}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-      CLICKHOUSE_CLUSTER_ENABLED: ${CLICKHOUSE_CLUSTER_ENABLED:-false}
-      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}
-      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: ${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}
-      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}
-      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${LANGFUSE_S3_MEDIA_UPLOAD_BUCKET:-langfuse}
-      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:9090}
-      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: ${LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE:-true}
-      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: ${LANGFUSE_S3_MEDIA_UPLOAD_PREFIX:-media/}
-      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
-      LANGFUSE_S3_BATCH_EXPORT_BUCKET: ${LANGFUSE_S3_BATCH_EXPORT_BUCKET:-langfuse}
-      LANGFUSE_S3_BATCH_EXPORT_PREFIX: ${LANGFUSE_S3_BATCH_EXPORT_PREFIX:-exports/}
-      LANGFUSE_S3_BATCH_EXPORT_REGION: ${LANGFUSE_S3_BATCH_EXPORT_REGION:-auto}
-      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_ENDPOINT:-http://minio:9000}
-      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:9090}
-      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID:-minio}
-      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: ${LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE:-true}
-      LANGFUSE_INGESTION_QUEUE_DELAY_MS: ${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}
-      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: ${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_AUTH: ${REDIS_AUTH:-LOCALONLYREDIS}
-      REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
-      REDIS_TLS_CA: ${REDIS_TLS_CA:-/certs/ca.crt}
-      REDIS_TLS_CERT: ${REDIS_TLS_CERT:-/certs/redis.crt}
-      REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
-
-  langfuse-web:
-    image: langfuse/langfuse:3
-    restart: always
-    depends_on: *langfuse-depends-on
-    ports:
-      - 3002:3000
-    environment:
-      <<: *langfuse-worker-env
-      NEXTAUTH_URL: http://localhost:3002
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
-      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
-      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
-      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
-      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
-      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
-      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
-
-  clickhouse:
-    image: clickhouse/clickhouse-server
-    restart: always
-    user: "101:101"
-    environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
-    volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
-    ports:
-      - 127.0.0.1:8123:8123
-      - 127.0.0.1:9000:9000
+      - guacamole_postgres_data:/var/lib/postgresql/data
+      - ./guacamole/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 1s
-
-  minio:
-    image: minio/minio
-    restart: always
-    entrypoint: sh
-    # create the 'langfuse' bucket before starting the service
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - 9090:9000
-      - 127.0.0.1:9091:9001
-    volumes:
-      - langfuse_minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 1s
+      test: ["CMD-SHELL", "pg_isready -U guacamole_user -d guacamole_db"]
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 1s
 
-  postgres:
-    image: postgres:${POSTGRES_VERSION:-latest}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
+  guacd:
+    <<: *common-env
+    image: guacamole/guacd:latest
+    container_name: guacd
+
+  guacamole:
+    <<: *common-env
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    depends_on:
+      guacd:
+        condition: service_started
+      guacamole-db:
+        condition: service_healthy
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: postgres
+      GUACD_HOSTNAME: guacd
+      POSTGRES_HOSTNAME: guacamole-db
+      POSTGRES_DATABASE: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: ${GUAC_POSTGRES_PASSWORD}
     ports:
-      - 127.0.0.1:5433:5432
-    volumes:
-      - langfuse_postgres_data:/var/lib/postgresql/data              
+      - "8080:8080" # EINZIGER exponierter Port
 
-  redis:
-    container_name: redis
-    image: docker.io/valkey/valkey:8-alpine
-    command: valkey-server --save 30 1 --loglevel warning
-    restart: unless-stopped  
-    volumes:
-      - valkey-data:/data
-    cap_drop:
-      - ALL
-    cap_add:
-      - SETGID
-      - SETUID
-      - DAC_OVERRIDE
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 10s
-      retries: 10        
+  # ===== ENHANCED DESKTOP ENVIRONMENT =====
 
-  searxng:
-    container_name: searxng
-    image: docker.io/searxng/searxng:latest
-    restart: unless-stopped
-    ports:
-      - 8080:8080
-    volumes:
-      - ./searxng:/etc/searxng:rw
+  desktop:
+    <<: *common-env
+    # Custom Desktop-Image für Editor-Integration
+    build:
+      context: ./desktop
+      dockerfile: Dockerfile.desktop
+      args:
+        - SELECTED_EDITOR=${SELECTED_EDITOR:-zed}
+    container_name: desktop
     environment:
-      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
-      - UWSGI_WORKERS=${SEARXNG_UWSGI_WORKERS:-4}
-      - UWSGI_THREADS=${SEARXNG_UWSGI_THREADS:-4}
-    cap_drop:
-      - ALL
+      VNC_PW: ${DESKTOP_PASSWORD:-password}
+      KASM_PORT: 6901
+      # Desktop-Optimierungen
+      KASM_RX_HOME: /home/kasm-user
+      DEBIAN_FRONTEND: noninteractive
+      TZ: ${DESKTOP_TIMEZONE:-Europe/Berlin}
+      LANG: de_DE.UTF-8
+      # Editor-Auswahl weitergeben
+      SELECTED_EDITOR: ${SELECTED_EDITOR:-zed}
+    volumes:
+      - desktop_home:/home/kasm-user
+      - desktop_config:/home/kasm-user/.config
+      - shared_data:/shared
+      # Editor-Konfigurationen
+      - ./desktop/editor-config:/shared/editor-config:ro
+      # Projekte und Scripts
+      - ./desktop/projects:/home/kasm-user/Projects
+      - ./desktop/scripts:/home/kasm-user/Scripts
+    shm_size: 4gb # Mehr Memory für Editoren
     cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "1"      
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    depends_on:
+      - n8n
+      - open-webui
+      - ollama
 
-  ollama-cpu:
+  # ===== CORE AI SERVICES =====
+
+  ollama:
+    <<: *common-env
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_storage:/root/.ollama
+    environment:
+      OLLAMA_CONTEXT_LENGTH: 8192
+      OLLAMA_HOST: 0.0.0.0
     profiles: ["cpu"]
-    <<: *service-ollama
 
   ollama-gpu:
-    profiles: ["gpu-nvidia"]
-    <<: *service-ollama
+    <<: *common-env
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_storage:/root/.ollama
+    environment:
+      OLLAMA_CONTEXT_LENGTH: 8192
+      OLLAMA_HOST: 0.0.0.0
     deploy:
       resources:
         reservations:
@@ -342,30 +155,195 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
-  ollama-gpu-amd:
-    profiles: ["gpu-amd"]
-    <<: *service-ollama
-    image: ollama/ollama:rocm
-    devices:
-      - "/dev/kfd"
-      - "/dev/dri"
-
-  ollama-pull-llama-cpu:
-    profiles: ["cpu"]
-    <<: *init-ollama
-    depends_on:
-      - ollama-cpu
-
-  ollama-pull-llama-gpu:
     profiles: ["gpu-nvidia"]
-    <<: *init-ollama
-    depends_on:
-      - ollama-gpu
 
-  ollama-pull-llama-gpu-amd:
-    profiles: [gpu-amd]
-    <<: *init-ollama
-    image: ollama/ollama:rocm
+  n8n:
+    <<: *common-env
+    image: n8nio/n8n:latest
+    container_name: n8n
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=postgres
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - WEBHOOK_URL=http://n8n:5678/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Berlin}
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      # Editor-Integration für N8N-Workflows
+      - N8N_EDITOR_BASE_URL=http://n8n:5678
+    volumes:
+      - n8n_storage:/home/node/.n8n
+      - shared_data:/data/shared
+      # N8N-Templates für Editor-Integration
+      - ./n8n/templates:/data/templates:ro
     depends_on:
-     - ollama-gpu-amd
+      - db
+      - ollama
+
+  open-webui:
+    <<: *common-env
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-default-secret}
+      WEBUI_AUTH: "True"
+      ENABLE_SIGNUP: "True"
+      # Editor-Integration
+      ENABLE_RAG_WEB_SEARCH: "True"
+      ENABLE_RAG_WEB_LOADER: "True"
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  qdrant:
+    <<: *common-env
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+
+  # ===== SUPABASE STACK =====
+
+  db:
+    <<: *common-env
+    image: supabase/postgres:15.1.1.78
+    container_name: supabase-db
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - supabase_db_data:/var/lib/postgresql/data
+      # SQL-Dateien für Editor-Integration
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: pg_isready -U postgres -h localhost
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kong:
+    <<: *common-env
+    image: kong:2.8.1
+    container_name: supabase-kong
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+    volumes:
+      - ./supabase/docker/volumes/api/kong.yml:/var/lib/kong/kong.yml:ro
+
+  # ===== PRODUCTIVITY STACK =====
+
+  appflowy:
+    <<: *common-env
+    image: appflowyinc/appflowy:latest
+    container_name: appflowy
+    environment:
+      APPFLOWY_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/appflowy
+    volumes:
+      - appflowy_data:/data
+    depends_on:
+      - db
+    profiles: ["productivity"]
+
+  affine:
+    <<: *common-env
+    image: ghcr.io/toeverything/affine-graphql:stable
+    container_name: affine
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/affine
+      REDIS_SERVER_HOST: redis
+      REDIS_SERVER_PORT: 6379
+      AFFINE_SERVER_HOST: 0.0.0.0
+      AFFINE_SERVER_PORT: 3010
+    volumes:
+      - affine_data:/workspace
+    depends_on:
+      - db
+      - redis
+    profiles: ["productivity"]
+
+  redis:
+    <<: *common-env
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - valkey_data:/data
+    profiles: ["productivity", "development"]
+
+  # ===== DEVELOPMENT STACK =====
+
+  gitlab:
+    <<: *common-env
+    image: gitlab/gitlab-ce:16.8.1-ce.0
+    container_name: gitlab
+    hostname: gitlab
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab:8082'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        letsencrypt['enable'] = false
+        # Performance für kleinere Setups
+        unicorn['worker_processes'] = 2
+        sidekiq['max_concurrency'] = 10
+        # Editor-Integration aktivieren
+        gitlab_rails['webhook_timeout'] = 30
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    shm_size: 256m
+    profiles: ["development"]
+
+  # ===== LANGFUSE (OBSERVABILITY) =====
+
+  langfuse-web:
+    <<: *common-env
+    image: langfuse/langfuse:3
+    container_name: langfuse
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      NEXTAUTH_URL: http://langfuse:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      - postgres
+      - redis
+    profiles: ["observability"]
+
+  postgres:
+    <<: *common-env
+    image: postgres:15-alpine
+    container_name: langfuse-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    profiles: ["observability"]

@@ -1,0 +1,208 @@
+# desktop/Dockerfile.desktop
+# Enhanced Desktop-Container mit Editor-Auswahl (Zed/VS Code)
+
+FROM kasmweb/desktop:1.15.0-rolling
+
+# Build-Argument für Editor-Auswahl
+ARG SELECTED_EDITOR=zed
+
+# Benutzer-Umgebung
+USER root
+
+# System-Updates und Basis-Tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    build-essential \
+    jq \
+    unzip \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    vim \
+    nano \
+    htop \
+    tree \
+    zip \
+    unzip \
+    locales \
+    && rm -rf /var/lib/apt/lists/*
+
+# Lokalisierung
+RUN locale-gen de_DE.UTF-8 && \
+    update-locale LANG=de_DE.UTF-8
+
+# Node.js für Language Servers
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+
+# Python-Entwicklungsumgebung
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust (für Zed und moderne Language Servers)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Language Servers installieren
+RUN npm install -g \
+    typescript \
+    typescript-language-server \
+    dockerfile-language-server-nodejs \
+    yaml-language-server \
+    vscode-json-languageserver \
+    @vscode/markdown-language-server
+
+# Python Language Server
+RUN pip3 install --no-cache-dir \
+    'python-lsp-server[all]' \
+    black \
+    pylint \
+    mypy \
+    flake8
+
+# Rust Language Server
+RUN rustup component add rust-analyzer
+
+# Go Language Server (optional)
+RUN wget -O /tmp/go.tar.gz https://go.dev/dl/go1.21.5.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+RUN go install golang.org/x/tools/gopls@latest
+
+# Docker CLI für Container-Development
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli && \
+    rm -rf /var/lib/apt/lists/*
+
+# Editor-spezifische Installation
+COPY install-editors.sh /tmp/install-editors.sh
+RUN chmod +x /tmp/install-editors.sh && \
+    SELECTED_EDITOR=${SELECTED_EDITOR} /tmp/install-editors.sh && \
+    rm /tmp/install-editors.sh
+
+# JetBrains Mono Font für Editoren
+RUN wget -O /tmp/jetbrains-mono.zip https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip && \
+    unzip /tmp/jetbrains-mono.zip -d /tmp/jetbrains-mono && \
+    mkdir -p /usr/share/fonts/truetype/jetbrains && \
+    cp /tmp/jetbrains-mono/fonts/ttf/*.ttf /usr/share/fonts/truetype/jetbrains/ && \
+    fc-cache -f -v && \
+    rm -rf /tmp/jetbrains-mono*
+
+# Terminal-Verbesserungen
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    zsh \
+    tmux \
+    && rm -rf /var/lib/apt/lists/*
+
+# Oh-My-Zsh für bessere Shell-Erfahrung
+RUN sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+
+# Zsh als Standard-Shell für kasm-user
+RUN chsh -s /bin/zsh kasm-user
+
+# Benutzer-spezifische Konfiguration
+USER kasm-user
+
+# Zsh-Konfiguration
+RUN echo 'export ZSH="$HOME/.oh-my-zsh"' >> ~/.zshrc && \
+    echo 'ZSH_THEME="robbyrussell"' >> ~/.zshrc && \
+    echo 'plugins=(git docker docker-compose node npm python rust)' >> ~/.zshrc && \
+    echo 'source $ZSH/oh-my-zsh.sh' >> ~/.zshrc && \
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="/usr/local/go/bin:$PATH"' >> ~/.zshrc
+
+# Bash-Konfiguration als Fallback
+RUN echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && \
+    echo 'export PATH="/usr/local/go/bin:$PATH"' >> ~/.bashrc
+
+# Git-Konfiguration
+RUN git config --global user.name "Workspace User" && \
+    git config --global user.email "user@workspace.local" && \
+    git config --global init.defaultBranch main && \
+    git config --global pull.rebase false
+
+# Arbeitsverzeichnisse erstellen
+RUN mkdir -p ~/Projects/{n8n-workflows,ai-experiments,docker-configs,scripts} && \
+    mkdir -p ~/Documents && \
+    mkdir -p ~/Downloads && \
+    mkdir -p ~/Scripts
+
+# Desktop-Verknüpfungen kopieren
+COPY desktop-shortcuts/ /home/kasm-user/Desktop/
+
+# Desktop-Startup-Skript
+COPY startup-desktop.sh /home/kasm-user/.startup-desktop.sh
+RUN chmod +x /home/kasm-user/.startup-desktop.sh
+
+# Entwicklungs-Utilities
+COPY dev-tools/ /home/kasm-user/Scripts/
+RUN chmod +x /home/kasm-user/Scripts/*.sh
+
+# Editor-Auswahl in Umgebung speichern
+ENV SELECTED_EDITOR=${SELECTED_EDITOR}
+
+# Entwicklungs-Aliase
+RUN echo 'alias ll="ls -la"' >> ~/.zshrc && \
+    echo 'alias la="ls -A"' >> ~/.zshrc && \
+    echo 'alias l="ls -CF"' >> ~/.zshrc && \
+    echo 'alias grep="grep --color=auto"' >> ~/.zshrc && \
+    echo 'alias dc="docker-compose"' >> ~/.zshrc && \
+    echo 'alias dps="docker ps"' >> ~/.zshrc && \
+    echo 'alias dlogs="docker logs"' >> ~/.zshrc && \
+    echo 'alias check-services="~/Scripts/check-services.sh"' >> ~/.zshrc
+
+# Editor-spezifische Aliase
+RUN if [ "${SELECTED_EDITOR}" = "zed" ]; then \
+        echo 'alias edit="zed"' >> ~/.zshrc && \
+        echo 'alias ze="zed"' >> ~/.zshrc; \
+    elif [ "${SELECTED_EDITOR}" = "vscode" ]; then \
+        echo 'alias edit="code"' >> ~/.zshrc && \
+        echo 'alias vs="code"' >> ~/.zshrc; \
+    fi
+
+# Zurück zu root für finale Konfiguration
+USER root
+
+# Desktop-Startup-Skript aktivieren
+RUN echo '#!/bin/bash' > /etc/startup-desktop.sh && \
+    echo 'sudo -u kasm-user /home/kasm-user/.startup-desktop.sh &' >> /etc/startup-desktop.sh && \
+    chmod +x /etc/startup-desktop.sh
+
+# Startup-Skript in VNC-Startup integrieren
+RUN echo '/etc/startup-desktop.sh' >> /dockerstartup/vnc_startup.sh
+
+# Cleanup
+RUN apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Standardmässig als kasm-user arbeiten
+USER kasm-user
+
+# Arbeitsverzeichnis
+WORKDIR /home/kasm-user
+
+# Umgebungsvariablen
+ENV LANG=de_DE.UTF-8
+ENV LANGUAGE=de_DE:de
+ENV LC_ALL=de_DE.UTF-8
+
+# Expose VNC Port
+EXPOSE 6901
+
+# Startup-Kommando
+CMD ["/dockerstartup/vnc_startup.sh"]
