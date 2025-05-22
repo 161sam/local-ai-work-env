@@ -2,6 +2,7 @@
 """
 Workspace-in-a-Box Startup Script - Docker Compose Version kompatibel
 Funktioniert mit älteren Docker Compose Versionen ohne --profile Support
+UPDATED: Verwendet 'docker compose' statt 'docker-compose'
 """
 
 import subprocess
@@ -29,7 +30,7 @@ def check_docker_compose_version():
     print("🔍 Checking Docker Compose version...")
 
     try:
-        result = subprocess.run(['docker-compose', '--version'],
+        result = subprocess.run(['docker', 'compose', '--version'],
                               capture_output=True, text=True, check=True)
         version_output = result.stdout.strip()
         print(f"📦 Found: {version_output}")
@@ -62,7 +63,7 @@ def check_prerequisites():
     """Überprüft Systemvoraussetzungen"""
     print("🔍 Checking prerequisites...")
 
-    required_commands = ['docker', 'docker-compose', 'curl', 'git']
+    required_commands = ['docker', 'curl', 'git']  # docker-compose entfernt, da docker compose ein Subcommand ist
     missing_commands = []
 
     for cmd in required_commands:
@@ -72,12 +73,20 @@ def check_prerequisites():
         except (subprocess.CalledProcessError, FileNotFoundError):
             missing_commands.append(cmd)
 
+    # Zusätzlicher Check für docker compose
+    try:
+        subprocess.run(['docker', 'compose', '--version'],
+                     capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("❌ Docker Compose plugin not found. Please install Docker Compose plugin.")
+        missing_commands.append('docker-compose-plugin')
+
     if missing_commands:
         print(f"❌ Missing required commands: {', '.join(missing_commands)}")
         print("Please install Docker, Docker Compose, and Git first.")
-        print("\nTo upgrade Docker Compose:")
-        print("curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose")
-        print("chmod +x /usr/local/bin/docker-compose")
+        print("\nTo install Docker Compose plugin:")
+        print("sudo apt-get install docker-compose-plugin")
+        print("# Or install Docker Desktop which includes the plugin")
         sys.exit(1)
 
     print("✅ All prerequisites met!")
@@ -622,7 +631,7 @@ def stop_existing_containers():
     """Stop existing containers"""
     print("🛑 Stopping existing containers...")
 
-    cmd = ["docker-compose", "-p", "localai", "down"]
+    cmd = ["docker", "compose", "-p", "localai", "down"]
 
     try:
         subprocess.run(cmd, check=False)  # Don't fail if nothing to stop
@@ -637,7 +646,7 @@ def start_services_legacy(profile, features):
     # Supabase zuerst starten
     print("📦 Starting Supabase services...")
     subprocess.run([
-        "docker-compose", "-p", "localai",
+        "docker", "compose", "-p", "localai",
         "-f", "supabase/docker/docker-compose.yml",
         "up", "-d"
     ], check=True)
@@ -651,7 +660,7 @@ def start_services_legacy(profile, features):
     print(f"🔧 Starting selected services: {', '.join(services_to_start)}")
 
     # Alle Services in einem Befehl starten
-    cmd = ["docker-compose", "-p", "localai", "up", "-d", "--build"] + services_to_start
+    cmd = ["docker", "compose", "-p", "localai", "up", "-d", "--build"] + services_to_start
 
     try:
         subprocess.run(cmd, check=True)
@@ -662,7 +671,7 @@ def start_services_legacy(profile, features):
 
         # Fallback: Nur Core-Services
         core_services = ["n8n", "open-webui", "ollama-cpu", "qdrant", "redis"]
-        cmd = ["docker-compose", "-p", "localai", "up", "-d"] + core_services
+        cmd = ["docker", "compose", "-p", "localai", "up", "-d"] + core_services
         subprocess.run(cmd, check=True)
 
 def start_services_with_profiles(profile, features):
@@ -672,7 +681,7 @@ def start_services_with_profiles(profile, features):
     # Supabase zuerst starten
     print("📦 Starting Supabase services...")
     subprocess.run([
-        "docker-compose", "-p", "localai",
+        "docker", "compose", "-p", "localai",
         "-f", "supabase/docker/docker-compose.yml",
         "up", "-d"
     ], check=True)
@@ -681,7 +690,7 @@ def start_services_with_profiles(profile, features):
     time.sleep(15)
 
     # Hauptservices starten
-    cmd = ["docker-compose", "-p", "localai", "up", "-d", "--build"]
+    cmd = ["docker", "compose", "-p", "localai", "up", "-d", "--build"]
 
     if profile != "none":
         cmd.extend(["--profile", profile])
