@@ -1,0 +1,422 @@
+# Erweiterte docker-compose.yml für local-ai-packaged mit Guacamole Desktop
+version: '3.8'
+
+networks:
+  local-ai-network:
+    driver: bridge
+    name: local-ai-network
+
+volumes:
+  # Bestehende Volumes aus local-ai-packaged
+  n8n_data:
+  caddy_data:
+  caddy_config:
+  ollama_data:
+  qdrant_storage:
+  supabase_db_data:
+  
+  # Neue Volumes für erweiterte Services
+  guacamole_config:
+  desktop_home:
+  appflowy_data:
+  affine_data:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  n8n_extended_data:
+
+x-shared-environment: &shared-env
+  # Aus der ursprünglichen Konfiguration
+  N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+  N8N_USER_MANAGEMENT_JWT_SECRET: ${N8N_USER_MANAGEMENT_JWT_SECRET}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  
+x-n8n: &service-n8n
+  image: n8nio/n8n:latest
+  restart: unless-stopped
+  environment:
+    <<: *shared-env
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=db
+    - DB_POSTGRESDB_PORT=5432
+    - DB_POSTGRESDB_DATABASE=n8n
+    - DB_POSTGRESDB_USER=postgres
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+    - N8N_HOST=${N8N_HOSTNAME:-localhost}
+    - N8N_PORT=5678
+    - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+    - NODE_ENV=production
+    - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678/}
+    - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Berlin}
+    - OLLAMA_HOST=http://ollama:11434
+  networks:
+    - local-ai-network
+  volumes:
+    - n8n_data:/home/node/.n8n
+    - ./shared:/data/shared
+
+services:
+  # ===== GUACAMOLE STACK =====
+  
+  # Guacamole Database
+  guac-postgres:
+    image: postgres:15
+    container_name: guac-postgres
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: guacamole_pass
+      PGDATA: /var/lib/postgresql/data/guacamole
+    volumes:
+      - ./init-guacamole:/docker-entrypoint-initdb.d:ro
+      - guacamole_config:/var/lib/postgresql/data
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # Guacamole Daemon
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: guacd
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # Guacamole Web Interface
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    depends_on:
+      - guacd
+      - guac-postgres
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRES_HOSTNAME: guac-postgres
+      POSTGRES_DATABASE: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: guacamole_pass
+    ports:
+      - "8080:8080"
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # Linux Desktop Container mit VNC
+  desktop:
+    image: kasmweb/desktop:1.15.0-rolling
+    container_name: linux-desktop
+    environment:
+      - VNC_PW=password
+      - KASM_PORT=6901
+    volumes:
+      - desktop_home:/home/kasm-user
+      - ./desktop-shared:/shared
+    networks:
+      - local-ai-network
+    ports:
+      - "6901:6901"
+    restart: unless-stopped
+    shm_size: 2gb
+
+  # ===== BESTEHENDE LOCAL-AI SERVICES =====
+  
+  # N8N Service (erweitert)
+  n8n:
+    <<: *service-n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    profiles:
+      - cpu
+      - gpu-nvidia
+      - gpu-amd
+
+  # Ollama Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - local-ai-network
+    profiles:
+      - cpu
+      - gpu-nvidia
+      - gpu-amd
+
+  # Ollama GPU Services
+  ollama-gpu-nvidia:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - local-ai-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - gpu-nvidia
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - local-ai-network
+
+  # Open WebUI
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-your-secret-key}
+    volumes:
+      - open-webui:/app/backend/data
+    networks:
+      - local-ai-network
+    depends_on:
+      - ollama
+
+  # ===== NEUE SERVICES =====
+  
+  # AppFlowy
+  appflowy:
+    image: appflowyinc/appflowy:latest
+    container_name: appflowy
+    ports:
+      - "8081:8080"
+    environment:
+      - APPFLOWY_DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/appflowy
+    volumes:
+      - appflowy_data:/data
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # AFFINE
+  affine:
+    image: ghcr.io/toeverything/affine-graphql:stable
+    container_name: affine
+    ports:
+      - "3010:3010"
+      - "5555:5555"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/affine
+      - REDIS_SERVER_HOST=redis
+      - REDIS_SERVER_PORT=6379
+    volumes:
+      - affine_data:/workspace
+    networks:
+      - local-ai-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # Redis für AFFINE
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # GitLab
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    hostname: 'gitlab.local'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.local:8082'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        # Disable Let's Encrypt
+        letsencrypt['enable'] = false
+        # Configure GitLab to use our network
+        gitlab_rails['db_host'] = 'gitlab-postgres'
+        gitlab_rails['db_port'] = 5432
+        gitlab_rails['db_database'] = 'gitlab'
+        gitlab_rails['db_username'] = 'gitlab'
+        gitlab_rails['db_password'] = 'gitlab_password'
+    ports:
+      - '8082:8082'
+      - '2222:22'
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    networks:
+      - local-ai-network
+    depends_on:
+      - gitlab-postgres
+    restart: unless-stopped
+    shm_size: '256m'
+
+  # GitLab PostgreSQL
+  gitlab-postgres:
+    image: postgres:15
+    container_name: gitlab-postgres
+    environment:
+      POSTGRES_DB: gitlab
+      POSTGRES_USER: gitlab
+      POSTGRES_PASSWORD: gitlab_password
+    volumes:
+      - ./gitlab-db:/var/lib/postgresql/data
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # N8N (erweiterte Instanz für zusätzliche Workflows)
+  n8n-extended:
+    image: n8nio/n8n:latest
+    container_name: n8n-extended
+    environment:
+      <<: *shared-env
+      - N8N_HOST=n8n-extended.local
+      - N8N_PORT=5679
+      - WEBHOOK_URL=http://localhost:5679/
+    ports:
+      - "5679:5678"
+    volumes:
+      - n8n_extended_data:/home/node/.n8n
+      - ./shared:/data/shared
+    networks:
+      - local-ai-network
+    restart: unless-stopped
+
+  # ===== SUPABASE STACK (aus original setup) =====
+  
+  # Supabase Kong
+  kong:
+    image: kong:2.8.1
+    container_name: supabase-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+    volumes:
+      - ./supabase/docker/volumes/api/kong.yml:/var/lib/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+    networks:
+      - local-ai-network
+
+  # Supabase Auth
+  auth:
+    image: supabase/gotrue:v2.158.1
+    container_name: supabase-auth
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS}
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME}
+      GOTRUE_MAILER_URLPATHS_INVITE: ${MAILER_URLPATHS_INVITE}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${MAILER_URLPATHS_CONFIRMATION}
+      GOTRUE_MAILER_URLPATHS_RECOVERY: ${MAILER_URLPATHS_RECOVERY}
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
+      GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
+      GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
+    networks:
+      - local-ai-network
+
+  # Supabase Database
+  db:
+    image: supabase/postgres:15.1.1.78
+    container_name: supabase-db
+    restart: unless-stopped
+    healthcheck:
+      test: pg_isready -U postgres -h localhost
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - ./supabase/docker/volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./supabase/docker/volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./supabase/docker/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - supabase_db_data:/var/lib/postgresql/data:Z
+      - ./supabase/docker/volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+    networks:
+      - local-ai-network
+
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - local-ai-network
+    environment:
+      - N8N_HOSTNAME=${N8N_HOSTNAME}
+      - WEBUI_HOSTNAME=${WEBUI_HOSTNAME}
+      - FLOWISE_HOSTNAME=${FLOWISE_HOSTNAME}
+      - SUPABASE_HOSTNAME=${SUPABASE_HOSTNAME}
+      - OLLAMA_HOSTNAME=${OLLAMA_HOSTNAME}
+      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
