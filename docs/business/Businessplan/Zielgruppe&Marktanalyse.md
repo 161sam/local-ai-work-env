@@ -1,0 +1,59 @@
+
+
+## ✅ **4. Zielgruppe & Marktanalyse**
+
+---
+
+### **4.1 Zielgruppen**
+
+FoundryCloud richtet sich an Nutzer, die eine leistungsfähige, flexible und selbstkontrollierte AI-Umgebung benötigen – ohne auf zentrale Anbieter wie OpenAI, Google oder Microsoft angewiesen zu sein.
+
+#### 🎯 Hauptzielgruppen:
+
+| Zielgruppe                | Nutzen & Motivation                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Entwicklungsteams**     | Zugriff auf GPU + LLMs + Dev-Toolchain (GitLab, Docker) – für KI-Projekte, Prototyping, RAG-Workflows |
+| **KMUs & Agenturen**      | Datenschutzkonforme AI-Nutzung (DSGVO), keine Cloudabhängigkeit, interne Automatisierung via N8N etc. |
+| **Universitäten, Labs**   | Lehr- und Forschungsumgebungen mit KI-Tools, experimentierfreundlich & self-hosted                    |
+| **IT-Freelancer / Maker** | Eigene AI-Projekte testen und hosten, mit GPU und Workspace-Zugang im Browser                         |
+| **Tech-Unternehmen**      | On-Prem Alternativen zu Azure AI, Hugging Face Hub etc. für sensible Daten oder Kundendienste         |
+
+---
+
+### **4.2 Marktvolumen & Trendanalyse**
+
+| Markt                       | Entwicklung                                     | Relevanz für FoundryCloud        |
+| --------------------------- | ----------------------------------------------- | -------------------------------- |
+| **Self-Hosted SaaS**        | +25 % jährlich (GitLab, Nextcloud, etc.)        | Nachfrage nach Unabhängigkeit    |
+| **AI-as-a-Service**         | +35 % jährlich bis 2027                         | LLMs, Automationen, RAG          |
+| **Cloud Alternatives (EU)** | +Steigendes Bewusstsein für DSGVO & Datenschutz | Standortvorteil für FoundryCloud |
+| **Open-Source AI Tools**    | explodierendes Ökosystem                        | Integration in Workspace-Modell  |
+
+#### 🔢 Marktpotenzial in Zahlen (EU):
+
+* **\~20.000 KMUs im IT/Consulting-Sektor** allein in D-A-CH
+* **>100.000 Entwickler-Teams in EU**, die regelmäßig mit LLMs & AI-APIs arbeiten
+* **>3.000 Hochschulen/Institutionen**, die DSGVO-konforme Infrastrukturen benötigen
+
+---
+
+### **4.3 Wettbewerbsanalyse**
+
+| Anbieter                | Beschreibung                           | Schwächen für deine Zielgruppe           |
+| ----------------------- | -------------------------------------- | ---------------------------------------- |
+| **Google Colab**        | Cloud-basierte Notebooks mit LLMs      | Keine Privatsphäre, keine Anpassung      |
+| **Paperspace / RunPod** | GPU-Clouds für Entwickler              | Teuer, keine vollständige Kontrolle      |
+| **OpenAI API**          | Schneller Zugang zu LLMs               | Datenabhängigkeit, API-Limitierungen     |
+| **Hugging Face Spaces** | Hosting von Modellen & Apps            | Community-getrieben, wenig Kontrolle     |
+| **Open-Source DIY**     | z. B. Ollama + LangChain selbst hosten | Technisch aufwendig, schwer integrierbar |
+
+### Deine Vorteile:
+
+* All-in-One-Plattform
+* EU-Datenstandort
+* GPU + Tools sofort einsatzbereit
+* PAYG-Modell für faire Preise
+* Kein Vendor Lock-In
+
+---
+
