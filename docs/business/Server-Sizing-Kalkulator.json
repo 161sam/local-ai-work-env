@@ -1,0 +1,64 @@
+{
+  "cluster": {
+    "target_users": 1000,
+    "user_profile": {
+      "avg_ram_per_user_gb": 2,
+      "avg_vcpu_per_user": 1.5,
+      "avg_storage_per_user_gb": 10,
+      "gpu_usage_ratio": 0.25,
+      "gpu_hours_per_user_per_day": 0.5
+    }
+  },
+  "nodes": {
+    "control_plane": {
+      "count": 3,
+      "cpu_per_node": 8,
+      "ram_gb_per_node": 32,
+      "storage_ssd_gb": 480,
+      "estimated_cost_eur": 1250
+    },
+    "gpu_compute": {
+      "count": 4,
+      "cpu_per_node": 16,
+      "ram_gb_per_node": 128,
+      "gpu_model": "RTX A6000",
+      "gpu_per_node": 1,
+      "storage_nvme_gb": 1000,
+      "estimated_cost_eur": 4500
+    },
+    "storage_nodes": {
+      "count": 3,
+      "cpu_per_node": 8,
+      "ram_gb_per_node": 64,
+      "osd_hdd_per_node_tb": 16,
+      "journal_ssd_gb": 1000,
+      "estimated_cost_eur": 1500
+    },
+    "service_nodes": {
+      "count": 6,
+      "cpu_per_node": 16,
+      "ram_gb_per_node": 64,
+      "storage_ssd_gb": 1000,
+      "estimated_cost_eur": 1200
+    }
+  },
+  "totals": {
+    "total_cpu_cores": 248,
+    "total_ram_gb": 992,
+    "total_gpu": 4,
+    "total_storage_tb": 48,
+    "estimated_cluster_cost_eur": 33950
+  },
+  "operational_costs": {
+    "monthly_power_eur": 600,
+    "monthly_network_eur": 150,
+    "monthly_hosting_rack_eur": 300,
+    "monthly_maintenance_eur": 100,
+    "monthly_total_eur": 1150
+  },
+  "break_even": {
+    "avg_price_per_user_eur": 20,
+    "monthly_revenue_at_1000_users": 20000,
+    "break_even_months": 2
+  }
+}
