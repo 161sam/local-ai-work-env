@@ -1,5 +1,5 @@
 
-## ✅ **2. Gründerprofil & Motivation (aktualisiert)**
+## Seite 1: Persönliches Gründerprofil (Kapitel 2)
 
 **Gründer: Sam S.**
 
