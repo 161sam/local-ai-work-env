@@ -1,0 +1,83 @@
+Hier ist deine **1-seitige Executive Summary-Vorlage** für Förderanträge, Gespräche mit Banken oder Investoren – speziell angepasst auf dein Projekt „Self-Hosted AI Workspace Cloud“:
+
+---
+
+# 📄 **Executive Summary – AI Workspace Cloud (Selbsthostbare AI-Plattform)**
+
+### **Projektname:**
+
+**FoundryCloud – Self-Hosted AI Workspaces für Unternehmen und Entwickler**
+
+---
+
+## 🧩 **Geschäftsidee / Produkt**
+
+**FoundryCloud** bietet eine **browserbasierte AI-Workspace-Plattform**, auf der Unternehmen, Entwicklerteams und Bildungseinrichtungen eigene **private AI-Umgebungen** nutzen können – komplett **DSGVO-konform, auf OpenStack gehostet und ohne US-Cloud-Abhängigkeit**.
+
+Jede*r Nutzer*in erhält einen vollwertigen Linux-Desktop mit integrierten AI-Tools (z. B. Ollama, Qdrant, N8N, GitLab), der über den Browser zugänglich ist. Die Plattform kombiniert Self-Hosting-Freiheit mit dem Komfort einer zentralisierten Cloud – und ist ideal für Datenschutz, Forschung, Prototyping und DevOps.
+
+---
+
+## 🎯 **Zielgruppe & Markt**
+
+* **KMU und Agenturen**, die AI-Tools nutzen wollen, ohne Daten aus der Hand zu geben
+* **Entwicklungsteams und Startups**, die GPU-beschleunigte Self-Hosted AI brauchen
+* **Universitäten & Labore**, die sichere, unabhängige LLM-Infrastruktur suchen
+
+→ Relevanter Markt: *AI-Infrastruktur & Privacy-first Tools (EU)*
+→ Wachsender Bedarf an *vertrauenswürdiger Cloud-Alternative zu OpenAI & Co.*
+
+---
+
+## 💡 **Alleinstellungsmerkmal (USP)**
+
+* **100 % Self-Hosted** (OpenStack + Docker, keine Cloud-Abhängigkeit)
+* **Browserbasierter AI-Desktop** mit GPU, LLM, RAG & Automationsstack
+* **Modular skalierbar** – von Einzelpersonen bis Enterprise-Teams
+* **Zukunftsfähig durch PAYG-Modell & Open Source-Ökosystem**
+
+---
+
+## 💰 **Monetarisierung & Geschäftsmodell**
+
+* **Basispreis**: ab 20 €/Monat (Workspace + AI-Tools)
+* **Pay-as-you-go**: GPU-Zeit, Speicher, API-Zugriffe
+* **Lifetime-Angebot** (Launch-Kampagne): 500 Early Adopters × einmalig 99–179 €
+
+---
+
+## 📈 **Ziele (3 Jahre)**
+
+| Zielgröße        | Planwert                          |
+| ---------------- | --------------------------------- |
+| Nutzer           | 3.000 zahlende Accounts           |
+| Umsatz/Jahr      | > 900.000 €                       |
+| Hardware-Cluster | Eigenbetrieb OpenStack AI Cluster |
+| Team             | 3 FTE + Freelancer-Team           |
+
+---
+
+## 🏗️ **Finanzierungsbedarf**
+
+* **Start-Invest**: 50.000 € (Server, Launch, MVP)
+* **Förderung beantragt**: „Digital Jetzt“, „go-digital“, Gründerkredit (KfW StartGeld)
+* **Break-even geplant ab**: 1.200 Nutzer (\~18–24 Monate)
+
+---
+
+## 🤝 **Team / Status**
+
+* 2 Gründer mit Erfahrung in Linux, Cloud-Infrastruktur & DevOps
+* MVP läuft auf OpenStack-Testumgebung
+* GitHub, Webseite, Warteliste in Arbeit
+* Start der Lifetime-Kampagne Q3 2025
+
+---
+
+## 📬 **Kontakt**
+
+**Name:** \[Dein Name]
+**E-Mail:** \[[dein.name@foundrycloud.de](mailto:dein.name@foundrycloud.de)]
+**Ort:** \[z. B. Köln / Remote]
+
+---
