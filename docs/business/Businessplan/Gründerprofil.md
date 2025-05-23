@@ -1,5 +1,5 @@
 
-## Seite 1: Persönliches Gründerprofil (Kapitel 2)
+## Persönliches Gründerprofil (Kapitel 2)
 
 **Gründer: Sam S.**
 
